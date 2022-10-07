@@ -16,6 +16,7 @@ OP_BOOL = 5
 
 class Canvas:
     CURSOR = '🖍️'
+    CURSOR_UNICODE = '\u3164'
 
     ENUM_COLORS = {
         'WHITE': '⬜',
@@ -31,7 +32,7 @@ class Canvas:
 
     def canvas(w: int, h: int, fill=None):
         fill_color = Canvas.ENUM_COLORS[fill if fill else 'WHITE']
-        return (fill_color * w + '\n') * h
+        return Canvas.CURSOR_UNICODE + (fill_color * w + '\n') * h
 
     '''
     Converts the Color ENUM to a Discord choice array
