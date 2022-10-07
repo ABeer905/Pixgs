@@ -12,7 +12,7 @@ class Discbot:
     API_URL = 'https://discord.com/api'
 
     #Websocket Opcodes
-    OP_READY = 0
+    OP_DISPATCH = 0
     OP_HEARTBEAT = 1
     OP_IDENTIFY = 2
     OP_RESUME = 6
@@ -21,12 +21,17 @@ class Discbot:
     OP_HELLO = 10
     OP_ACK = 11
 
+    #Dispatch types
+    TYPE_READY = 'READY'
+    TYPE_INTERACTION = 'INTERACTION_CREATE'
+
     #Websocket close event codes in which a resume is not possible.
     #The bot must reconnect with the original gateway url and re-identify itself.
     UNRECOVERABLE_EXIT = [1000, 1001, 4004, 4010, 4011, 4012, 4013, 4014]
 
 
-    def __init__(self, token: str):
+    def __init__(self, app_id: str, token: str):
+        self.app_id = app_id
         self.token = token
         self.auth = {'Authorization': 'Bot {}'.format(token)}
 
@@ -35,16 +40,24 @@ class Discbot:
         self.sequence = 0            #The last sequence 's' sent by Discord.
         self.heartbeat_flag = 0      # 1: force heartbeat, regardless of current interval. 2: Terminates thread.
         self.heartbeat_thread = None #Thread on which heartbeating runs.
+        self.command_registry = {}   #A map of discord command names to there respective function callback
+
         self.gateway_url = ''        #Url used to open the initial gateway. May be needed to reconnect if a resume is not possible.
         self.resume_gateway_url = '' #Url used to resume a disconnected gateway.
         self.resume_session_id = ''  #Session id used to resume a disconnected gateway.
         self.resume_flag = 0         #Indicates wether a resume or identify should be sent on connection open.
-        logging.basicConfig(filename='drawpy.log', encoding='utf-8', level=logging.DEBUG)
+        
+        logging.basicConfig(
+            format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
+            filename='drawpy.log',
+            encoding='utf-8',
+            filemode='w',
+            level=logging.DEBUG)
     
     '''
     Opens a websocket with the discord server so that the bot can begin exchanging data.
     NOTE: This command blocks indefinitley and should therefore only be called after bot
-          initialization is complete. Commands will arrive on seperate threads.
+          initialization is complete.
     '''
     def start(self, wss_url=None):
         logging.info('Starting Drawpy instance')
@@ -72,6 +85,21 @@ class Discbot:
         self.ws.run_forever()
 
     '''
+    Registers a Discord command. Used to callback to command functions when recieved by the websocket.
+    @command - A dictionary that follows the Application Command Structure as specified by Discord docs
+    @callback - A pointer to the function to run when the command is run.
+    @post - Wether the command should be posted to Discord. This should be set to True to initialize the command
+              or each time you make an edit to the command paramater. Discord will store a copy once you
+              post it, therefore, it is not necesary to post more than once.
+    '''
+    def register_command(self, command: dict, callback, post: bool):
+        if post:
+            url = '{}/v10/applications/{}/commands'.format(Discbot.API_URL, self.app_id)
+            res = requests.post(url, headers=self.auth, json=command)
+            Discbot.raise_for_status(res)
+        self.command_registry[command['name']] = callback
+
+    '''
     Runs once after calling ws.run_forever(). Connection has been established
     and the bot must identify itself with Discord.
     '''
@@ -80,6 +108,7 @@ class Discbot:
         paylaod = None
 
         if self.resume_flag:
+            self.resume_flag = 0
             payload = {
                 'op': Discbot.OP_RESUME,
                 'd': {
@@ -114,20 +143,25 @@ class Discbot:
             close_msg
         ))
         self.resume_flag = close_status_code not in Discbot.UNRECOVERABLE_EXIT
-        self.clean_up(restart=True, resumbale=self.resume_flag)
+        self.clean_up(restart=True, resumable=self.resume_flag)
 
     def _on_err(self, ws, error):
         logging.error('The following error was encountered with the websocket: {}'.format(str(error)))
 
     def _on_msg(self, ws, msg):
         res = json.loads(msg)
-
         self.sequence = res['s']
         match res['op']:
-            case Discbot.OP_READY:
-                logging.info('Handshake successful! Connection with Discord was established.')
-                self.resume_gateway_url = res['d']['resume_gateway_url']
-                self.resume_session_id = res['d']['session_id']
+            case Discbot.OP_DISPATCH:
+                if res['t'] == Discbot.TYPE_READY:
+                    logging.info('Handshake successful! Connection with Discord was established.')
+                    self.resume_gateway_url = res['d']['resume_gateway_url']
+                    self.resume_session_id = res['d']['session_id']
+                elif res['t'] == Discbot.TYPE_INTERACTION:
+                    logging.info('Got Interaction Command: {}'.format(res))
+                    callback = res['d']['data']['name']
+                    if callback in self.command_registry:
+                        self.command_registry[callback](res['d'])
             case Discbot.OP_HEARTBEAT:
                 self.heartbeat_flag = 1
             case Discbot.OP_RECONNECT:
@@ -183,11 +217,30 @@ class Discbot:
             else:
                 logging.info('Attempting to restart websocket connection.')
                 self.start(wss_url=self.gateway_url)
-    
+
+    '''
+    Replies to a slash '/' command.
+    interaction_id - The interaction if of the command being responded to.
+    interaction_token - The token of the interaction being responded to.
+    msg - A string message
+    components - A list of Discord Component objects
+    '''
+    def reply_interaction(self, interaction_id: str, interaction_token: str, msg: str, components=None):
+        url = '{}/v10/interactions/{}/{}/callback'.format(Discbot.API_URL, interaction_id, interaction_token)
+        data = {
+            'type': 4,
+            'data': {
+                'content': msg,
+                'components': components
+            }
+        }
+        res = requests.post(url, headers=self.auth, json=data)
+        Disbot.raise_for_status(res)
+
     '''
     Calls raise_for_status with logging on error
     '''
-    def raise_for_status(res):
+    def raise_for_status(res: requests.Response):
         try:
             res.raise_for_status()
             return 1
