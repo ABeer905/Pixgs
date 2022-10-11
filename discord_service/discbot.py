@@ -21,6 +21,10 @@ class Discbot:
     OP_HELLO = 10
     OP_ACK = 11
 
+    RESPOND_PING = 1
+    RESPOND_MSG = 4
+    RESPOND_EDIT = 7
+
     #Dispatch types
     TYPE_READY = 'READY'
     TYPE_INTERACTION = 'INTERACTION_CREATE'
@@ -159,7 +163,11 @@ class Discbot:
                     self.resume_session_id = res['d']['session_id']
                 elif res['t'] == Discbot.TYPE_INTERACTION:
                     logging.info('Got Interaction Command: {}'.format(res))
-                    callback = res['d']['data']['name']
+                    callback = None
+                    if 'name' in res['d']['data']:
+                        callback = res['d']['data']['name']
+                    elif 'custom_id' in res['d']['data']:
+                        callback = res['d']['data']['custom_id']
                     if callback in self.command_registry:
                         self.command_registry[callback](res['d'])
             case Discbot.OP_HEARTBEAT:
@@ -225,17 +233,17 @@ class Discbot:
     msg - A string message
     components - A list of Discord Component objects
     '''
-    def reply_interaction(self, interaction_id: str, interaction_token: str, msg: str, components=None):
+    def reply_interaction(self, interaction_id: str, interaction_token: str, msg: str, components=None, edit=False):
         url = '{}/v10/interactions/{}/{}/callback'.format(Discbot.API_URL, interaction_id, interaction_token)
         data = {
-            'type': 4,
+            'type': Discbot.RESPOND_EDIT if edit else Discbot.RESPOND_MSG,
             'data': {
                 'content': msg,
                 'components': components
             }
         }
         res = requests.post(url, headers=self.auth, json=data)
-        Disbot.raise_for_status(res)
+        Discbot.raise_for_status(res)
 
     '''
     Calls raise_for_status with logging on error
