@@ -226,23 +226,48 @@ class Discbot:
                 self.start(wss_url=self.gateway_url)
 
     '''
-    Replies to a slash '/' command.
+    Replies to a TYPE_INTERACT event. This function is required to be called
+    during a TYPE_INTERACT event otherwise the user will see an error message.
     interaction_id - The interaction if of the command being responded to.
     interaction_token - The token of the interaction being responded to.
-    msg - A string message
-    components - A list of Discord Component objects
+    msg - A string message.
+    components (optional) - An array of Discord component objects.
+    edit - If true a message is edited instead of creating a new one. Default: False.
+    hidden - If true a message is only visible to the user who started the interaction. Default: False.
     '''
-    def reply_interaction(self, interaction_id: str, interaction_token: str, msg: str, components=None, edit=False):
+    def reply_interaction(self, interaction_id: str, interaction_token: str, msg: str, components=None, edit=False, hidden=False):
         url = '{}/v10/interactions/{}/{}/callback'.format(Discbot.API_URL, interaction_id, interaction_token)
         data = {
             'type': Discbot.RESPOND_EDIT if edit else Discbot.RESPOND_MSG,
             'data': {
                 'content': msg,
-                'components': components
+                'components': components,
+                'flags': 1 << 6 if hidden else 0
             }
         }
         res = requests.post(url, headers=self.auth, json=data)
         Discbot.raise_for_status(res)
+
+    '''
+    Edits a previously sent message. If editing when responding to a TYPE_INTERACTION
+    event, reply_interaction should be used instead.
+    '''
+    def edit_message(self, channel_id: str, message_id: str, msg: str, components=None):
+        uri = '{}/channels/{}/messages/{}'.format(Discbot.API_URL, channel_id, message_id)
+        reply = {
+            'content': msg
+        }
+        res = requests.patch(uri, headers=self.auth, json=reply)
+        Discbot.raise_for_status(res)
+
+    '''
+    Returns a message's content given the channel id and message id
+    '''
+    def get_message(self, channel_id: str, message_id: str):
+        uri = '{}/channels/{}/messages/{}'.format(Discbot.API_URL, channel_id, message_id)
+        res = requests.get(uri, headers=self.auth)
+        Discbot.raise_for_status(res)
+        return res.json()
 
     '''
     Calls raise_for_status with logging on error
@@ -253,3 +278,4 @@ class Discbot:
             return 1
         except Exception as e:
             logging.error(e)
+            raise Exception("Bad request")

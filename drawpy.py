@@ -19,6 +19,7 @@ CONTAINER = 1
 BUTTON = 2
 DROPDOWN = 3
 
+STYLE_PRIMARY = 1
 STYLE_SECONDARY = 2
 STYLE_SUCCESS = 3
 
@@ -45,9 +46,30 @@ class Canvas:
         'PURPLE': '💜',
         'GREEN': '💚',
         'YELLOW': '💛',
-        'RED': '❤️',
+        'RED': '❤',
         'BROWN': '🤎'
     }
+
+    '''
+    A Discord component object used to initiate editing of a canvas
+    '''
+    EDIT_COMPONENT = [
+        {
+            'type': CONTAINER,
+            'components': [
+                {
+                    'type': BUTTON,
+                    'style': STYLE_PRIMARY,
+                    'emoji': {
+                        'id': None,
+                        'name': '🖍️'
+                    },
+                    'label': 'Edit Canvas',
+                    'custom_id': 'edit'
+                }
+            ]
+        }
+    ]
 
     '''
     A Discord component object used to describe the drawing controls
@@ -111,6 +133,30 @@ class Canvas:
                     'type': DROPDOWN,
                     'custom_id': 'color_select',
                     'options': None,
+                }
+            ]
+        },
+        {
+            'type': CONTAINER,
+            'components': [
+                #The following components are disabled buttons.
+                #Instead of a real id, button 0 stores a channel id for the original canvas
+                #Instead of a real id, button 1 stores a message id for the original canvas 
+                #This is useful for calling back to edit the original canvas without having to locally store any data
+                #These components will be returned with each edit, and while hacky appears to work
+                {
+                    'type': BUTTON,
+                    'style': STYLE_PRIMARY,
+                    'custom_id': '',
+                    'label': ' ',
+                    'disabled': True
+                },
+                {
+                    'type': BUTTON,
+                    'style': STYLE_PRIMARY,
+                    'custom_id': '',
+                    'label': ' ',
+                    'disabled': True
                 }
             ]
         }
@@ -180,8 +226,7 @@ class Canvas:
     select menu set to the desired color.
     color - A key from ENUM_COLORS
     '''
-    def get_controller(color: str):
-        controller = copy.deepcopy(Canvas.CONTROLLER_COMPONENT)
+    def set_controller_color(controller: dict, color: str):
         for op in controller[1]['components'][0]['options']:
             if op['value'] == color:
                 op['default'] = True
@@ -197,7 +242,9 @@ class Canvas:
     def copy_controller(command_response: dict):
         controller = copy.deepcopy(Canvas.CONTROLLER_COMPONENT)
         dropdown = command_response['message']['components'][1]
+        data = command_response['message']['components'][2]
         controller[1] = dropdown
+        controller[2] = data
         return controller
 
 #Set color select dropdown options
@@ -243,7 +290,25 @@ def canvas(command_response):
     h = command_response['data']['options'][1]['value']
     fill = command_response['data']['options'][2]['value'] if len(command_response['data']['options']) == 3 else None
     image = Canvas.canvas(w, h, fill)
-    bot.reply_interaction(command_response['id'], command_response['token'], image, components=Canvas.CONTROLLER_COMPONENT)
+    bot.reply_interaction(command_response['id'], command_response['token'], image, components=Canvas.EDIT_COMPONENT)
+
+'''
+Callback function to enter 'edit mode', where a user can begin editing a canvas
+'''
+def edit_mode(command_response):
+    image = command_response['message']['content']
+    controller = copy.deepcopy(Canvas.CONTROLLER_COMPONENT)
+    #Split the token into chunks and store it into disabled button
+    controller[2]['components'][0]['custom_id'] = command_response['message']['channel_id']
+    controller[2]['components'][1]['custom_id'] = command_response['message']['id']
+
+    bot.reply_interaction(
+      command_response['id'],
+      command_response['token'],
+      image,
+      components=controller,
+      hidden=True
+    )
 
 '''
 Callback function for moving the drawing cursor
@@ -286,7 +351,8 @@ Callback function where the user selects the drawing color
 def choose_color(command_response):
     image = command_response['message']['content']
     color = command_response['data']['values'][0]
-    controller = Canvas.get_controller(color)
+    controller = Canvas.copy_controller(command_response)
+    controller = Canvas.set_controller_color(controller, color)
 
     bot.reply_interaction(command_response['id'], command_response['token'], image, components=controller, edit=True)
 
@@ -294,10 +360,15 @@ def choose_color(command_response):
 Callback function for setting a pixel to the selected color
 '''
 def draw(command_response):
-    image = command_response['message']['content']
+    tk_args = command_response['message']['components'][2]['components']
+    channel_id = tk_args[0]['custom_id']
+    message_id = tk_args[1]['custom_id']
+
+    image_edit = command_response['message']['content']
+    image_public = bot.get_message(channel_id, message_id)['content']
     controller = Canvas.copy_controller(command_response)
 
-    cur, w, h = Canvas.load_canvas(image)
+    cur, w, h = Canvas.load_canvas(image_edit)
     if cur == -1:
         cur = 0
 
@@ -307,10 +378,14 @@ def draw(command_response):
             fill_color = op['value']
             break
     
-    image = image[:cur] + Canvas.ENUM_CURSOR[fill_color] + image[cur+1:]
-    bot.reply_interaction(command_response['id'], command_response['token'], image, components=controller, edit=True)
+    image_edit = image_public[:cur] + Canvas.ENUM_CURSOR[fill_color] + image_public[cur+1:]
+    image_public = image_public[:cur] + Canvas.ENUM_COLORS[fill_color] + image_public[cur+1:]
+
+    bot.reply_interaction(command_response['id'], command_response['token'], image_edit, components=controller, edit=True)
+    bot.edit_message(channel_id, message_id, image_public)
 
 bot.register_command(canvas_command, canvas, '--reg' in sys.argv)
+bot.register_command({'name': 'edit'}, edit_mode, False)
 bot.register_command({'name': 'up'}, move, False)
 bot.register_command({'name': 'down'}, move, False)
 bot.register_command({'name': 'left'}, move, False)
