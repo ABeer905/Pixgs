@@ -1,5 +1,6 @@
 from discord_service.discbot import Discbot
 from dotenv import load_dotenv
+import copy
 import sys
 import os
 
@@ -13,6 +14,13 @@ MESSAGE_COMMAND = 1
 OP_STRING = 3
 OP_INTEGER = 4
 OP_BOOL = 5
+
+CONTAINER = 1
+BUTTON = 2
+DROPDOWN = 3
+
+STYLE_SECONDARY = 2
+STYLE_SUCCESS = 3
 
 class Canvas:
     CURSOR = '⌄'
@@ -42,13 +50,13 @@ class Canvas:
         'BROWN': '🤎'
     }
 
-    DIRECTION_COMPONENT = [
+    CONTROLLER_COMPONENT = [
         {
-            'type': 1,
+            'type': CONTAINER,
             'components': [
                 {
-                    'type': 2,
-                    'style': 1,
+                    'type': BUTTON,
+                    'style': STYLE_SECONDARY,
                     'emoji': { 
                         'id': None,
                         'name': '⬅️'
@@ -56,8 +64,8 @@ class Canvas:
                     'custom_id': 'left'
                 },
                 {
-                    'type': 2,
-                    'style': 1,
+                    'type': BUTTON,
+                    'style': STYLE_SECONDARY,
                     'emoji': {
                         'id': None,
                         'name': '➡️'
@@ -65,8 +73,8 @@ class Canvas:
                     'custom_id': 'right'
                 },
                 {
-                    'type': 2,
-                    'style': 1,
+                    'type': BUTTON,
+                    'style': STYLE_SECONDARY,
                     'emoji': {
                         'id': None,
                         'name': '⬆️'
@@ -74,13 +82,33 @@ class Canvas:
                     'custom_id': 'up'
                 },
                 {
-                    'type': 2,
-                    'style': 1,
+                    'type': BUTTON,
+                    'style': STYLE_SECONDARY,
                     'emoji': {
                         'id': None,
                         'name': '⬇️'
                     },
                     'custom_id': 'down'
+                },
+                {
+                    'type': BUTTON,
+                    'style': STYLE_SUCCESS,
+                    'emoji': {
+                        'id': None,
+                        'name': '🖍️'
+                    },
+                    'label': 'Draw Color',
+                    'custom_id': 'draw'
+                }
+            ]
+        },
+        {
+            'type': CONTAINER,
+            'components': [
+                {
+                    'type': DROPDOWN,
+                    'custom_id': 'color_select',
+                    'options': None,
                 }
             ]
         }
@@ -118,16 +146,57 @@ class Canvas:
                 return color
 
     '''
-    Converts the Color ENUM to a Discord choice array
+    Converts the Color ENUM to a Discord object of type
+    type: 0 - A Discord choice array
+          1 - A Discord dropdown array
     '''
-    def colors_to_list():
+    def colors_to_list(obj_type):
         color_list = []
         for color in Canvas.ENUM_COLORS.keys():
-            color_list.append({
-                'name': color,
-                'value': color
-            })
+            if obj_type:
+                color_list.append({
+                    'label': 'Color: ' + color.title(),
+                    'value': color,
+                    'default': color == 'WHITE',
+                    'emoji': {
+                        'id': None,
+                        'name': Canvas.ENUM_COLORS[color]
+                    }
+                }) 
+            else:
+                color_list.append({
+                    'name': color,
+                    'value': color
+                })
         return color_list
+
+    '''
+    Returns a deep copy of the controller component where the dropdown has the
+    select menu set to the desired color.
+    color - A key from ENUM_COLORS
+    '''
+    def get_controller(color: str):
+        controller = copy.deepcopy(Canvas.CONTROLLER_COMPONENT)
+        for op in controller[1]['components'][0]['options']:
+            if op['value'] == color:
+                op['default'] = True
+            else:
+                op['default'] = False
+        return controller
+
+    '''
+    Returns a deep copy of the controller component where the dropdown is copied
+    from the current command response.
+    command_response - The interaction object taken as a paramater to a webhook callback
+    '''
+    def copy_controller(command_response: dict):
+        controller = copy.deepcopy(Canvas.CONTROLLER_COMPONENT)
+        dropdown = command_response['message']['components'][1]
+        controller[1] = dropdown
+        return controller
+
+#Set color select dropdown options
+Canvas.CONTROLLER_COMPONENT[1]['components'][0]['options'] = Canvas.colors_to_list(1)
 
 #Discord application command structure for command 'canvas'
 canvas_command = {
@@ -156,7 +225,7 @@ canvas_command = {
             'name': 'fill',
             'description': 'The initial color of the canvas (default: white)',
             'required': False,
-            'choices': Canvas.colors_to_list()
+            'choices': Canvas.colors_to_list(0)
         }
     ]
 }
@@ -169,7 +238,7 @@ def canvas(command_response):
     h = command_response['data']['options'][1]['value']
     fill = command_response['data']['options'][2]['value'] if len(command_response['data']['options']) == 3 else None
     image = Canvas.canvas(w, h, fill)
-    bot.reply_interaction(command_response['id'], command_response['token'], image, components=Canvas.DIRECTION_COMPONENT)
+    bot.reply_interaction(command_response['id'], command_response['token'], image, components=Canvas.CONTROLLER_COMPONENT)
 
 '''
 Callback function for moving the drawing cursor
@@ -178,7 +247,6 @@ def move(command_response):
     direction = command_response['data']['custom_id']
     image = command_response['message']['content']
     cur, w, h = Canvas.load_canvas(image)
-    print(cur, w, h)
     new_cur = 0
     
     if cur == -1:
@@ -201,19 +269,48 @@ def move(command_response):
         new_cur = cur + w+1
     elif direction == 'down':
         new_cur = cur%(w+1)
-    print(new_cur, w, h)
     
     image = image[:cur] + Canvas.ENUM_COLORS[Canvas.color_from_char(image[cur])] + image[cur+1:]
-    print(image + '\n')
     image = image[:new_cur] + Canvas.ENUM_CURSOR[Canvas.color_from_char(image[new_cur])] + image[new_cur+1:]
-    print(image)
-    bot.reply_interaction(command_response['id'], command_response['token'], image, components=Canvas.DIRECTION_COMPONENT, edit=True)
+    controller = Canvas.copy_controller(command_response)
+    bot.reply_interaction(command_response['id'], command_response['token'], image, components=controller, edit=True)
+
+'''
+Callback function where the user selects the drawing color
+'''
+def choose_color(command_response):
+    image = command_response['message']['content']
+    color = command_response['data']['values'][0]
+    controller = Canvas.get_controller(color)
+
+    bot.reply_interaction(command_response['id'], command_response['token'], image, components=controller, edit=True)
+
+'''
+Callback function for setting a pixel to the selected color
+'''
+def draw(command_response):
+    image = command_response['message']['content']
+    controller = Canvas.copy_controller(command_response)
+
+    cur, w, h = Canvas.load_canvas(image)
+    if cur == -1:
+        cur = 0
+
+    fill_color = 'WHITE'
+    for op in command_response['message']['components'][1]['components'][0]['options']:
+        if 'default' in op and op['default']:
+            fill_color = op['value']
+            break
     
+    image = image[:cur] + Canvas.ENUM_CURSOR[fill_color] + image[cur+1:]
+    bot.reply_interaction(command_response['id'], command_response['token'], image, components=controller, edit=True)
 
 bot.register_command(canvas_command, canvas, '--reg' in sys.argv)
 bot.register_command({'name': 'up'}, move, False)
 bot.register_command({'name': 'down'}, move, False)
 bot.register_command({'name': 'left'}, move, False)
 bot.register_command({'name': 'right'}, move, False)
+bot.register_command({'name': 'color_select'}, choose_color, False)
+bot.register_command({'name': 'draw'}, draw, False)
 
 bot.start()

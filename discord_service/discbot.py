@@ -21,8 +21,8 @@ class Discbot:
     OP_HELLO = 10
     OP_ACK = 11
 
-    RESPOND_PING = 1
     RESPOND_MSG = 4
+    RESPOND_DEFERED = 6
     RESPOND_EDIT = 7
 
     #Dispatch types
@@ -132,7 +132,6 @@ class Discbot:
                         'device': None
                     },
                     'presence': {
-                        'status': None,
                         'status': 'online',
                         'afk': False,
                     },
