@@ -109,7 +109,7 @@ class Discbot:
     '''
     def _on_open(self, ws):
         logging.info('Connection was opened.')
-        paylaod = None
+        payload = None
 
         if self.resume_flag:
             self.resume_flag = 0

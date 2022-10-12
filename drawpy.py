@@ -23,7 +23,6 @@ STYLE_SECONDARY = 2
 STYLE_SUCCESS = 3
 
 class Canvas:
-    CURSOR = '⌄'
 
     ENUM_COLORS = {
         'WHITE': '⬜',
@@ -50,6 +49,9 @@ class Canvas:
         'BROWN': '🤎'
     }
 
+    '''
+    A Discord component object used to describe the drawing controls
+    '''
     CONTROLLER_COMPONENT = [
         {
             'type': CONTAINER,
@@ -97,7 +99,7 @@ class Canvas:
                         'id': None,
                         'name': '🖍️'
                     },
-                    'label': 'Draw Color',
+                    'label': 'Fill Color',
                     'custom_id': 'draw'
                 }
             ]
@@ -114,6 +116,9 @@ class Canvas:
         }
     ]
 
+    '''
+    Creates a w x h canvas string with the fill color if specified, otherwise white
+    '''
     def canvas(w: int, h: int, fill=None):
         fill_color = Canvas.ENUM_COLORS[fill if fill else 'WHITE']
         return (fill_color * w + '\n') * h
@@ -157,7 +162,7 @@ class Canvas:
                 color_list.append({
                     'label': 'Color: ' + color.title(),
                     'value': color,
-                    'default': color == 'WHITE',
+                    'default': color == 'BLACK',
                     'emoji': {
                         'id': None,
                         'name': Canvas.ENUM_COLORS[color]
@@ -268,7 +273,7 @@ def move(command_response):
     elif direction == 'down' and row < h - 1:
         new_cur = cur + w+1
     elif direction == 'down':
-        new_cur = cur%(w+1)
+        new_cur = cur % (w+1)
     
     image = image[:cur] + Canvas.ENUM_COLORS[Canvas.color_from_char(image[cur])] + image[cur+1:]
     image = image[:new_cur] + Canvas.ENUM_CURSOR[Canvas.color_from_char(image[new_cur])] + image[new_cur+1:]
