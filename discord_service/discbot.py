@@ -236,29 +236,33 @@ class Discbot:
     hidden - If true a message is only visible to the user who started the interaction. Default: False.
     '''
     def reply_interaction(self, interaction_id: str, interaction_token: str, msg: str, components=None, edit=False, hidden=False):
-        url = '{}/v10/interactions/{}/{}/callback'.format(Discbot.API_URL, interaction_id, interaction_token)
-        data = {
-            'type': Discbot.RESPOND_EDIT if edit else Discbot.RESPOND_MSG,
-            'data': {
-                'content': msg,
-                'components': components,
-                'flags': 1 << 6 if hidden else 0
+        def run():
+            url = '{}/v10/interactions/{}/{}/callback'.format(Discbot.API_URL, interaction_id, interaction_token)
+            data = {
+                'type': Discbot.RESPOND_EDIT if edit else Discbot.RESPOND_MSG,
+                'data': {
+                    'content': msg,
+                    'components': components,
+                    'flags': 1 << 6 if hidden else 0
+                }
             }
-        }
-        res = requests.post(url, headers=self.auth, json=data)
-        Discbot.raise_for_status(res)
+            res = requests.post(url, headers=self.auth, json=data)
+            Discbot.raise_for_status(res)
+        threading.Thread(target=run).start()
 
     '''
     Edits a previously sent message. If editing when responding to a TYPE_INTERACTION
     event, reply_interaction should be used instead.
     '''
     def edit_message(self, channel_id: str, message_id: str, msg: str, components=None):
-        uri = '{}/channels/{}/messages/{}'.format(Discbot.API_URL, channel_id, message_id)
-        reply = {
-            'content': msg
-        }
-        res = requests.patch(uri, headers=self.auth, json=reply)
-        Discbot.raise_for_status(res)
+        def run():
+            uri = '{}/channels/{}/messages/{}'.format(Discbot.API_URL, channel_id, message_id)
+            reply = {
+                'content': msg
+            }
+            res = requests.patch(uri, headers=self.auth, json=reply)
+            Discbot.raise_for_status(res)
+        threading.Thread(target=run).start()
 
     '''
     Returns a message's content given the channel id and message id
