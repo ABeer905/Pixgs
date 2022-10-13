@@ -177,8 +177,11 @@ class Canvas:
         w = 0
         h = 1
         cur = -1
+        lock = -1
         linebreak = None
         for i in range(len(content)):
+            if content[i] == '\0':
+                break
             if content[i] == '\n':
                 h += 1
                 linebreak = True
@@ -279,6 +282,12 @@ canvas_command = {
             'description': 'The initial color of the canvas (default: white)',
             'required': False,
             'choices': Canvas.colors_to_list(0)
+        },
+        {
+            'type': OP_BOOL,
+            'name': 'private',
+            'description': 'Only you can see and edit the image (default: false)',
+            'required': False
         }
     ]
 }
@@ -289,9 +298,24 @@ Callback function for the command '/canvas'. Creates a blank canvas of w x h in 
 def canvas(command_response):
     w = command_response['data']['options'][0]['value']
     h = command_response['data']['options'][1]['value']
-    fill = command_response['data']['options'][2]['value'] if len(command_response['data']['options']) == 3 else None
-    image = Canvas.canvas(w, h, fill)
-    bot.reply_interaction(command_response['id'], command_response['token'], image, components=Canvas.EDIT_COMPONENT)
+    optional_args = {'fill': None, 'private': False}
+
+    if len(command_response['data']['options']) >= 3:
+        optional_args[command_response['data']['options'][2]['name']] = command_response['data']['options'][2]['value']
+    if len(command_response['data']['options']) == 4:
+        optional_args[command_response['data']['options'][3]['name']] = command_response['data']['options'][3]['value']
+
+    image = Canvas.canvas(w, h, optional_args['fill'])
+    controller = copy.deepcopy(Canvas.CONTROLLER_COMPONENT)
+    controller[2]['components'][0]['custom_id'] = 'none'
+    controller[2]['components'][1]['custom_id'] = 'none-1'
+    bot.reply_interaction(
+        command_response['id'],
+        command_response['token'],
+        image,
+        components=controller if optional_args['private'] else Canvas.EDIT_COMPONENT,
+        hidden=optional_args['private']
+    )
 
 '''
 Callback function to enter 'edit mode', where a user can begin editing a canvas
@@ -365,8 +389,10 @@ def draw(command_response):
     channel_id = tk_args[0]['custom_id']
     message_id = tk_args[1]['custom_id']
 
+    private = channel_id == 'none'
+
     image_edit = command_response['message']['content']
-    image_public = bot.get_message(channel_id, message_id)['content']
+    image_public = command_response['message']['content'] if private else bot.get_message(channel_id, message_id)['content']
     controller = Canvas.copy_controller(command_response)
 
     cur, w, h = Canvas.load_canvas(image_edit)
@@ -383,7 +409,8 @@ def draw(command_response):
     image_public = image_public[:cur] + Canvas.ENUM_COLORS[fill_color] + image_public[cur+1:]
 
     bot.reply_interaction(command_response['id'], command_response['token'], image_edit, components=controller, edit=True)
-    bot.edit_message(channel_id, message_id, image_public)
+    if not private:
+        bot.edit_message(channel_id, message_id, image_public)
 
 bot.register_command(canvas_command, canvas, '--reg' in sys.argv)
 bot.register_command({'name': 'edit'}, edit_mode, False)
