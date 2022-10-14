@@ -53,7 +53,7 @@ class Discbot:
         
         logging.basicConfig(
             format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
-            filename='drawpy.log',
+            filename='pixgs.log',
             encoding='utf-8',
             filemode='w',
             level=logging.DEBUG)
@@ -64,7 +64,7 @@ class Discbot:
           initialization is complete.
     '''
     def start(self, wss_url=None):
-        logging.info('Starting Drawpy instance')
+        logging.info('Starting pixgs instance')
 
         if not wss_url:
             res = requests.get(
