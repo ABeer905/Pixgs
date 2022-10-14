@@ -140,6 +140,16 @@ class Canvas:
         {
             'type': CONTAINER,
             'components': [
+                {
+                    'type': BUTTON,
+                    'style': STYLE_PRIMARY,
+                    'custom_id': 'cursor',
+                    'emoji': {
+                        'id': None,
+                        'name': '❤'
+                    },
+                    'label': 'Toggle Cursor'
+                },
                 #The following components are disabled buttons.
                 #Instead of a real id, button 0 stores a channel id for the original canvas
                 #Instead of a real id, button 1 stores a message id for the original canvas 
@@ -307,8 +317,8 @@ def canvas(command_response):
 
     image = Canvas.canvas(w, h, optional_args['fill'])
     controller = copy.deepcopy(Canvas.CONTROLLER_COMPONENT)
-    controller[2]['components'][0]['custom_id'] = 'none'
-    controller[2]['components'][1]['custom_id'] = 'none-1'
+    controller[2]['components'][1]['custom_id'] = 'none'
+    controller[2]['components'][2]['custom_id'] = 'none-1'
     bot.reply_interaction(
         command_response['id'],
         command_response['token'],
@@ -324,8 +334,8 @@ def edit_mode(command_response):
     image = command_response['message']['content']
     controller = copy.deepcopy(Canvas.CONTROLLER_COMPONENT)
     #Split the token into chunks and store it into disabled button
-    controller[2]['components'][0]['custom_id'] = command_response['message']['channel_id']
-    controller[2]['components'][1]['custom_id'] = command_response['message']['id']
+    controller[2]['components'][1]['custom_id'] = command_response['message']['channel_id']
+    controller[2]['components'][2]['custom_id'] = command_response['message']['id']
 
     bot.reply_interaction(
       command_response['id'],
@@ -386,8 +396,8 @@ Callback function for setting a pixel to the selected color
 '''
 def draw(command_response):
     tk_args = command_response['message']['components'][2]['components']
-    channel_id = tk_args[0]['custom_id']
-    message_id = tk_args[1]['custom_id']
+    channel_id = tk_args[1]['custom_id']
+    message_id = tk_args[2]['custom_id']
 
     private = channel_id == 'none'
 
@@ -412,6 +422,23 @@ def draw(command_response):
     if not private:
         bot.edit_message(channel_id, message_id, image_public)
 
+'''
+Toggles the cursor to make it visible/invisible
+'''
+def toggle_cursor(command_response):
+    image = command_response['message']['content']
+    cur, w, h = Canvas.load_canvas(image)
+    controller = Canvas.copy_controller(command_response)
+    
+    show_c = 0
+    if cur == -1:
+        cur = 0
+        show_c = 1
+    
+    color = Canvas.color_from_char(image[cur])
+    image = image[:cur] + (Canvas.ENUM_CURSOR[color] if show_c else Canvas.ENUM_COLORS[color]) + image[cur+1:]
+    bot.reply_interaction(command_response['id'], command_response['token'], image, components=controller, edit=True)
+
 bot.register_command(canvas_command, canvas, '--reg' in sys.argv)
 bot.register_command({'name': 'edit'}, edit_mode, False)
 bot.register_command({'name': 'up'}, move, False)
@@ -420,5 +447,6 @@ bot.register_command({'name': 'left'}, move, False)
 bot.register_command({'name': 'right'}, move, False)
 bot.register_command({'name': 'color_select'}, choose_color, False)
 bot.register_command({'name': 'draw'}, draw, False)
+bot.register_command({'name': 'cursor'}, toggle_cursor, False)
 
 bot.start()
