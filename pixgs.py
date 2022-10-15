@@ -251,7 +251,7 @@ class Canvas:
                 }) 
             else:
                 color_list.append({
-                    'name': color,
+                    'name': color.title(),
                     'value': color
                 })
         return color_list
@@ -380,7 +380,6 @@ def edit_mode(command_response):
 Callback function for moving the drawing cursor
 '''
 def move(command_response):
-    t = time.process_time()
     direction = command_response['data']['custom_id']
     channel_id, message_id = Canvas.unpack_data(command_response)
     private = channel_id == None
@@ -421,7 +420,6 @@ def move(command_response):
     image = image[:new_cur] + Canvas.ENUM_CURSOR[Canvas.color_from_char(image[new_cur])] + image[new_cur+1:]
     controller = Canvas.copy_controller(command_response)
     bot.reply_interaction(command_response['id'], command_response['token'], image, components=controller, edit=True)
-    print('move took', time.process_time() - t, 's')
 
 '''
 Callback function where the user selects the drawing color
@@ -438,7 +436,6 @@ def choose_color(command_response):
 Callback function for setting a pixel to the selected color
 '''
 def draw(command_response):
-    t = time.process_time()
     channel_id, message_id = Canvas.unpack_data(command_response)
     private = channel_id == 'none'
 
@@ -463,7 +460,6 @@ def draw(command_response):
     if not private:
         imgcache.put((channel_id, message_id), image_public)
         bot.edit_message(channel_id, message_id, image_public)
-    print('draw took', time.process_time() - t, 's')
 
 '''
 Toggles the cursor to make it visible/invisible
