@@ -1,8 +1,9 @@
+import logging
+from logging.handlers import RotatingFileHandler
 import websocket
 import threading
 import requests
 import threading
-import logging
 import json
 import time
 import sys
@@ -51,12 +52,12 @@ class Discbot:
         self.resume_session_id = ''  #Session id used to resume a disconnected gateway.
         self.resume_flag = -1         #Indicates wether a resume or identify should be sent on connection open.
         
-        logging.basicConfig(
-            format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
-            filename='pixgs.log',
-            encoding='utf-8',
-            filemode='w',
-            level=logging.DEBUG)
+        handle = RotatingFileHandler('pixgs.log', mode='a', maxBytes=25*1024*1024, encoding='utf-8')
+        handle.setLevel(logging.INFO)
+
+        self.log = logging.getLogger('logger')
+        self.log.setLevel(logging.INFO)
+        self.log.addHandler(handle)
     
     '''
     Opens a websocket with the discord server so that the bot can begin exchanging data.
@@ -64,7 +65,7 @@ class Discbot:
           initialization is complete.
     '''
     def start(self, wss_url=None):
-        logging.info('Starting pixgs instance')
+        self.log.info('Starting pixgs instance')
 
         if not wss_url:
             res = requests.get(
@@ -108,7 +109,7 @@ class Discbot:
     and the bot must identify itself with Discord.
     '''
     def _on_open(self, ws):
-        logging.info('Connection was opened.')
+        self.log.info('Connection was opened.')
         payload = None
 
         if self.resume_flag == 1:
@@ -142,7 +143,7 @@ class Discbot:
         ws.send(json.dumps(payload))
 
     def _on_close(self, ws, close_status_code, close_msg):
-        logging.warning('Connection to Discord was closed with status code: {}, and message: {}'.format(
+        self.log.warning('Connection to Discord was closed with status code: {}, and message: {}'.format(
             close_status_code,
             close_msg
         ))
@@ -154,7 +155,7 @@ class Discbot:
             self.clean_up(restart=True, resumable=self.resume_flag)
 
     def _on_err(self, ws, error):
-        logging.error('The following error was encountered with the websocket: {}'.format(str(error)))
+        self.log.error('The following error was encountered with the websocket: {}'.format(str(error)))
 
     def _on_msg(self, ws, msg):
         res = json.loads(msg)
@@ -162,11 +163,11 @@ class Discbot:
         match res['op']:
             case Discbot.OP_DISPATCH:
                 if res['t'] == Discbot.TYPE_READY:
-                    logging.info('Handshake successful! Connection with Discord was established.')
+                    self.log.info('Handshake successful! Connection with Discord was established.')
                     self.resume_gateway_url = res['d']['resume_gateway_url']
                     self.resume_session_id = res['d']['session_id']
                 elif res['t'] == Discbot.TYPE_INTERACTION:
-                    logging.info('Got Interaction Command: {}'.format(res))
+                    self.log.info('Got Interaction Command: {}'.format(res))
                     callback = None
                     if 'name' in res['d']['data']:
                         callback = res['d']['data']['name']
@@ -181,11 +182,11 @@ class Discbot:
                 ws.close()
             case Discbot.OP_HELLO:
                 interval = res['d']['heartbeat_interval']
-                logging.info('Starting heartbeat with interval: %dms', interval)
+                self.log.info('Starting heartbeat with interval: %dms', interval)
                 self._heartbeat(ws, interval)
             case Discbot.OP_ACK:
                 self.ack = 1
-                logging.info("Recieved Ack")
+                self.log.info("Recieved Ack")
             case Discbot.OP_INVALID:
                 if res['d'] == True:
                     self.resume_flag = 1
@@ -205,7 +206,7 @@ class Discbot:
                     self.heartbeat_flag = 0
                     return #Exit heartbeat
                 elif self.heartbeat_flag == 1 or ( delta > interval and self.ack ): #Case if heartbeat should be sent
-                    logging.info('Sending Heartbeat')
+                    self.log.info('Sending Heartbeat')
                     start_time = time.time()
                     self.force_heartbeat = 0
                     self.ack = 0
@@ -227,10 +228,10 @@ class Discbot:
         self.heartbeat_flag = 2
         if restart:
             if resumable:
-                logging.info('Attempting to resume websocket connection.')
+                self.log.info('Attempting to resume websocket connection.')
                 self.start(wss_url=self.resume_gateway_url)
             else:
-                logging.info('Attempting to restart websocket connection.')
+                self.log.info('Attempting to restart websocket connection.')
                 self.start(wss_url=self.gateway_url)
 
     '''
@@ -289,5 +290,5 @@ class Discbot:
             res.raise_for_status()
             return 1
         except Exception as e:
-            logging.error(e)
+            self.log.error(e)
             raise Exception("Bad request")
