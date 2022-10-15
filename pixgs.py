@@ -1,4 +1,5 @@
 from discord_service.discbot import Discbot
+from cache_service.image_cache import ImgCache
 from dotenv import load_dotenv
 import copy
 import time
@@ -10,6 +11,7 @@ load_dotenv()
 CLIENT_ID = os.getenv("CLIENT_ID")
 TOKEN = os.getenv("TOKEN")
 bot = Discbot(CLIENT_ID, TOKEN)
+imgcache = ImgCache(32768)
 
 MESSAGE_COMMAND = 1
 OP_STRING = 3
@@ -203,6 +205,25 @@ class Canvas:
         return cur, w, h
 
     '''
+    Attempts to gets an image from the cache with the id (guild_id, message_id).
+    If the image is not cached a request is made to discord for the image,
+    and then the image is stored in cache. 
+    Optional paramater no_cache:
+        if True, returns 0 on a cache miss
+        if False, the standard behavior as described above occurs 
+    '''
+    def get_image(guild_id, message_id, no_cache=False):
+        image = imgcache.get((guild_id, message_id))
+        if image:
+            return image
+        elif no_cache:
+            return 0
+        else:
+            image = bot.get_message(guild_id, message_id)['content']
+            imgcache.put((guild_id, message_id), image)
+            return image
+
+    '''
     Returns the key 'Color' of the cursor or pixel object for use with ENUM_COLORS/ENUM_CURSOR
     '''
     def color_from_char(c):
@@ -260,6 +281,16 @@ class Canvas:
         controller[1] = dropdown
         controller[2] = data
         return controller
+
+    '''
+    Extracts data stored in discord components.
+    Returns channel_id, message_id
+    '''
+    def unpack_data(command_response: dict):
+        tk_args = command_response['message']['components'][2]['components']
+        channel_id = tk_args[1]['custom_id']
+        message_id = tk_args[2]['custom_id']
+        return channel_id, message_id
 
 #Set color select dropdown options
 Canvas.CONTROLLER_COMPONENT[1]['components'][0]['options'] = Canvas.colors_to_list(1)
@@ -349,13 +380,24 @@ def edit_mode(command_response):
 Callback function for moving the drawing cursor
 '''
 def move(command_response):
+    t = time.process_time()
     direction = command_response['data']['custom_id']
+    channel_id, message_id = Canvas.unpack_data(command_response)
+    private = channel_id == None
     image = command_response['message']['content']
+    #Attempt to load updated copy of public image if it exists in cache, otherwise we just use our edit copy
+    image_public = None
+    if not private:
+        image_public = Canvas.get_image(channel_id, message_id, no_cache=True)
+
     cur, w, h = Canvas.load_canvas(image)
     new_cur = 0
     
     if cur == -1:
         cur = 0
+    if image_public: #Refresh edit copy of image in case of cache hit
+        image = image_public[:cur] + Canvas.ENUM_CURSOR[Canvas.color_from_char(image_public[cur])] + image_public[cur+1:]
+
     row = int(cur / (w+1))
 
     if direction == 'left' and cur > 0 and image[cur - 1] != '\n':
@@ -379,6 +421,7 @@ def move(command_response):
     image = image[:new_cur] + Canvas.ENUM_CURSOR[Canvas.color_from_char(image[new_cur])] + image[new_cur+1:]
     controller = Canvas.copy_controller(command_response)
     bot.reply_interaction(command_response['id'], command_response['token'], image, components=controller, edit=True)
+    print('move took', time.process_time() - t, 's')
 
 '''
 Callback function where the user selects the drawing color
@@ -395,14 +438,12 @@ def choose_color(command_response):
 Callback function for setting a pixel to the selected color
 '''
 def draw(command_response):
-    tk_args = command_response['message']['components'][2]['components']
-    channel_id = tk_args[1]['custom_id']
-    message_id = tk_args[2]['custom_id']
-
+    t = time.process_time()
+    channel_id, message_id = Canvas.unpack_data(command_response)
     private = channel_id == 'none'
 
     image_edit = command_response['message']['content']
-    image_public = command_response['message']['content'] if private else bot.get_message(channel_id, message_id)['content']
+    image_public = command_response['message']['content'] if private else Canvas.get_image(channel_id, message_id)
     controller = Canvas.copy_controller(command_response)
 
     cur, w, h = Canvas.load_canvas(image_edit)
@@ -420,7 +461,9 @@ def draw(command_response):
 
     bot.reply_interaction(command_response['id'], command_response['token'], image_edit, components=controller, edit=True)
     if not private:
+        imgcache.put((channel_id, message_id), image_public)
         bot.edit_message(channel_id, message_id, image_public)
+    print('draw took', time.process_time() - t, 's')
 
 '''
 Toggles the cursor to make it visible/invisible
