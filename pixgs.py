@@ -1,5 +1,7 @@
 from discord_service.discbot import Discbot
 from cache_service.image_cache import ImgCache
+import logging
+from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 import copy
 import time
@@ -10,7 +12,16 @@ load_dotenv()
 
 CLIENT_ID = os.getenv("CLIENT_ID")
 TOKEN = os.getenv("TOKEN")
-bot = Discbot(CLIENT_ID, TOKEN)
+
+handle = RotatingFileHandler('pixgs.log', mode='a', maxBytes=25*1024*1024, encoding='utf-8')
+handle.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(filename)s %(lineno)d %(message)s'))
+handle.setLevel(logging.INFO)
+
+log = logging.getLogger('logger')
+log.setLevel(logging.INFO)
+log.addHandler(handle)
+
+bot = Discbot(CLIENT_ID, TOKEN, log)
 imgcache = ImgCache(32768)
 
 MESSAGE_COMMAND = 1
@@ -292,6 +303,8 @@ class Canvas:
         message_id = tk_args[2]['custom_id']
         return channel_id, message_id
 
+canvases = 0
+
 #Set color select dropdown options
 Canvas.CONTROLLER_COMPONENT[1]['components'][0]['options'] = Canvas.colors_to_list(1)
 
@@ -357,6 +370,9 @@ def canvas(command_response):
         components=controller if optional_args['private'] else Canvas.EDIT_COMPONENT,
         hidden=optional_args['private']
     )
+    global canvases
+    canvases+=1
+    log.info('Creating canvas #%d' % canvases)
 
 '''
 Callback function to enter 'edit mode', where a user can begin editing a canvas

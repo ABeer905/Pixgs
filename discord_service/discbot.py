@@ -1,5 +1,3 @@
-import logging
-from logging.handlers import RotatingFileHandler
 import websocket
 import threading
 import requests
@@ -35,7 +33,7 @@ class Discbot:
     UNRECOVERABLE_EXIT = [1000, 1001, 4004, 4010, 4011, 4012, 4013, 4014]
 
 
-    def __init__(self, app_id: str, token: str):
+    def __init__(self, app_id: str, token: str, log):
         self.app_id = app_id
         self.token = token
         self.auth = {'Authorization': 'Bot {}'.format(token)}
@@ -52,12 +50,7 @@ class Discbot:
         self.resume_session_id = ''  #Session id used to resume a disconnected gateway.
         self.resume_flag = -1         #Indicates wether a resume or identify should be sent on connection open.
         
-        handle = RotatingFileHandler('pixgs.log', mode='a', maxBytes=25*1024*1024, encoding='utf-8')
-        handle.setLevel(logging.INFO)
-
-        self.log = logging.getLogger('logger')
-        self.log.setLevel(logging.INFO)
-        self.log.addHandler(handle)
+        self.log = log
     
     '''
     Opens a websocket with the discord server so that the bot can begin exchanging data.
