@@ -12,8 +12,10 @@ load_dotenv()
 
 CLIENT_ID = os.getenv("CLIENT_ID")
 TOKEN = os.getenv("TOKEN")
+SHARD_ID = os.getenv("SHARD_ID")
+SHARD_TOTAL = os.getenv("SHARD_TOTAL")
 
-handle = RotatingFileHandler('pixgs.log', mode='a', maxBytes=25*1024*1024, encoding='utf-8')
+handle = RotatingFileHandler('pixgs-s%s.log' % SHARD_ID, mode='a', maxBytes=25*1024*1024, encoding='utf-8')
 handle.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(filename)s %(lineno)d %(message)s'))
 handle.setLevel(logging.INFO)
 
@@ -21,7 +23,7 @@ log = logging.getLogger('logger')
 log.setLevel(logging.INFO)
 log.addHandler(handle)
 
-bot = Discbot(CLIENT_ID, TOKEN, log)
+bot = Discbot(CLIENT_ID, TOKEN, int(SHARD_ID), int(SHARD_TOTAL), log)
 imgcache = ImgCache(32768)
 
 MESSAGE_COMMAND = 1

@@ -33,10 +33,11 @@ class Discbot:
     UNRECOVERABLE_EXIT = [1000, 1001, 4004, 4010, 4011, 4012, 4013, 4014]
 
 
-    def __init__(self, app_id: str, token: str, log):
+    def __init__(self, app_id: str, token: str, shard_id: int, shard_total: int, log):
         self.app_id = app_id
         self.token = token
         self.auth = {'Authorization': 'Bot {}'.format(token)}
+        self.shard = [shard_id, shard_total]
 
         self.ws = None               #Websocket for which data is exchanged.
         self.ack = 1                 #Determines if an ack was recieved. If 0 when sending heartbeat, connection is bad. 
@@ -130,6 +131,7 @@ class Discbot:
                         'status': 'online',
                         'afk': False,
                     },
+                    'shard': self.shard,
                     'intents': 0
                 }
             }
