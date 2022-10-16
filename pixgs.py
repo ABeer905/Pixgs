@@ -310,7 +310,7 @@ canvases = 0
 #Set color select dropdown options
 Canvas.CONTROLLER_COMPONENT[1]['components'][0]['options'] = Canvas.colors_to_list(1)
 
-#Discord application command structure for command 'canvas'
+#Discord application command structure for command '/canvas'
 canvas_command = {
     'name': 'canvas',
     'type': MESSAGE_COMMAND,
@@ -346,6 +346,13 @@ canvas_command = {
             'required': False
         }
     ]
+}
+
+#Discord application command structure for command '/help'
+help_command = {
+    'name': 'help',
+    'type': MESSAGE_COMMAND,
+    'description': 'View command refrence guide.'
 }
 
 '''
@@ -496,7 +503,19 @@ def toggle_cursor(command_response):
     image = image[:cur] + (Canvas.ENUM_CURSOR[color] if show_c else Canvas.ENUM_COLORS[color]) + image[cur+1:]
     bot.reply_interaction(command_response['id'], command_response['token'], image, components=controller, edit=True)
 
+'''
+Callback method for /help. Returns the url for command refrence
+'''
+def help(command_response):
+    bot.reply_interaction(
+        command_response['id'],
+        command_response['token'],
+        'For information on using Pixgs visit: https://pix-gs.github.io/commands.html',
+        hidden=True
+    )
+
 bot.register_command(canvas_command, canvas, '--reg' in sys.argv)
+bot.register_command(help_command, help, '--reg' in sys.argv)
 bot.register_command({'name': 'edit'}, edit_mode, False)
 bot.register_command({'name': 'up'}, move, False)
 bot.register_command({'name': 'down'}, move, False)
