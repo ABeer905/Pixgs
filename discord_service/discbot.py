@@ -1,3 +1,4 @@
+from multiprocessing import Pool
 import websocket
 import threading
 import requests
@@ -36,16 +37,21 @@ class Discbot:
     def __init__(self, app_id: str, token: str, shard_id: int, shard_total: int, log):
         self.app_id = app_id
         self.token = token
-        self.auth = {'Authorization': 'Bot {}'.format(token)}
-        self.shard = [shard_id, shard_total]
+        self.session = requests.Session()
+        self.session.stream = False
+        self.session.headers.update({'Authorization': 'Bot {}'.format(token)})
+        self.shard = [shard_id, shard_total] #The shard id is a single instance 0 to n-1, shard total is a number n of total instances running
+        self.command_registry = {}   #A map of discord command names to there respective function callback
+        self.tpool = Pool(8)         #Thread pool for asynchorously running requests
 
+        '''Data for websocket maintenence'''
         self.ws = None               #Websocket for which data is exchanged.
         self.ack = 1                 #Determines if an ack was recieved. If 0 when sending heartbeat, connection is bad. 
         self.sequence = 0            #The last sequence 's' sent by Discord.
         self.heartbeat_flag = 0      # 1: force heartbeat, regardless of current interval. 2: Terminates thread.
         self.heartbeat_thread = None #Thread on which heartbeating runs.
-        self.command_registry = {}   #A map of discord command names to there respective function callback
 
+        '''Data related to websocket connection'''
         self.gateway_url = ''        #Url used to open the initial gateway. May be needed to reconnect if a resume is not possible.
         self.resume_gateway_url = '' #Url used to resume a disconnected gateway.
         self.resume_session_id = ''  #Session id used to resume a disconnected gateway.
@@ -62,9 +68,8 @@ class Discbot:
         self.log.info('Starting pixgs instance')
 
         if not wss_url:
-            res = requests.get(
+            res = self.session.get(
                 url=Discbot.API_URL + '/gateway/bot',
-                headers=self.auth,
                 params = {'v': 10, 'encoding': 'json'}
             )
             if(Discbot.raise_for_status(res)):
@@ -94,7 +99,7 @@ class Discbot:
     def register_command(self, command: dict, callback, post: bool):
         if post:
             url = '{}/v10/applications/{}/commands'.format(Discbot.API_URL, self.app_id)
-            res = requests.post(url, headers=self.auth, json=command)
+            res = self.session.post(url, json=command)
             Discbot.raise_for_status(res)
         self.command_registry[command['name']] = callback
 
@@ -213,6 +218,8 @@ class Discbot:
                 elif delta > interval: #Case if heartbeat should be sent but an ack was never gotten
                     self.resume_flag = 1
                     self.ws.close()
+                    return
+                time.sleep(.5) #Time precision is not super important so we can deschedule the thread
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -240,40 +247,34 @@ class Discbot:
     hidden - If true a message is only visible to the user who started the interaction. Default: False.
     '''
     def reply_interaction(self, interaction_id: str, interaction_token: str, msg: str, components=None, edit=False, hidden=False):
-        def run():
-            url = '{}/v10/interactions/{}/{}/callback'.format(Discbot.API_URL, interaction_id, interaction_token)
-            data = {
-                'type': Discbot.RESPOND_EDIT if edit else Discbot.RESPOND_MSG,
-                'data': {
-                    'content': msg,
-                    'components': components,
-                    'flags': 1 << 6 if hidden else 0
-                }
+        url = '{}/v10/interactions/{}/{}/callback'.format(Discbot.API_URL, interaction_id, interaction_token)
+        data = {
+            'type': Discbot.RESPOND_EDIT if edit else Discbot.RESPOND_MSG,
+            'data': {
+                'content': msg,
+                'components': components,
+                'flags': 1 << 6 if hidden else 0
             }
-            res = requests.post(url, headers=self.auth, json=data)
-            Discbot.raise_for_status(res)
-        threading.Thread(target=run).start()
+        }
+        self.tpool.apply_async(self.session.post, args=[url], kwds={'json': data, 'timeout': 2}, callback=Discbot.raise_for_status)
 
     '''
     Edits a previously sent message. If editing when responding to a TYPE_INTERACTION
     event, reply_interaction should be used instead.
     '''
     def edit_message(self, channel_id: str, message_id: str, msg: str, components=None):
-        def run():
-            uri = '{}/channels/{}/messages/{}'.format(Discbot.API_URL, channel_id, message_id)
-            reply = {
-                'content': msg
-            }
-            res = requests.patch(uri, headers=self.auth, json=reply)
-            Discbot.raise_for_status(res)
-        threading.Thread(target=run).start()
+        uri = '{}/channels/{}/messages/{}'.format(Discbot.API_URL, channel_id, message_id)
+        reply = {
+            'content': msg
+        }
+        self.tpool.apply_async(self.session.patch, args=[uri], kwds={'json': reply, 'timeout': 2}, callback=Discbot.raise_for_status)
 
     '''
     Returns a message's content given the channel id and message id
     '''
     def get_message(self, channel_id: str, message_id: str):
         uri = '{}/channels/{}/messages/{}'.format(Discbot.API_URL, channel_id, message_id)
-        res = requests.get(uri, headers=self.auth)
+        res = self.session.get(uri)
         Discbot.raise_for_status(res)
         return res.json()
 

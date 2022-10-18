@@ -24,7 +24,7 @@ log.setLevel(logging.INFO)
 log.addHandler(handle)
 
 bot = Discbot(CLIENT_ID, TOKEN, int(SHARD_ID), int(SHARD_TOTAL), log)
-imgcache = ImgCache(32768)
+imgcache = ImgCache(65536)
 
 MESSAGE_COMMAND = 1
 OP_STRING = 3

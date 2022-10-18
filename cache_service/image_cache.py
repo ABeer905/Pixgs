@@ -1,11 +1,7 @@
-import sys
-import random
-
 '''
 The image cache is used to store copies of the image locally, so that we do not have
 to fetch the image every time we wish to edit it. The cache implements a LRU policy.
-Each entry is a key (channel id, message id). The value is the image encoded in utf-8.
-Approx size of each entry is ~1kb (assuming max image size of 14x14)
+Each entry is a key (channel id, message id).
 '''
 class ImgCache():
     def __init__(self, size):
@@ -62,4 +58,3 @@ class ImageCacheEntry():
         self.value = value
         self.prev = None
         self.next = None
-
