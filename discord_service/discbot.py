@@ -1,3 +1,4 @@
+from stats import Stats
 from multiprocessing import Pool
 import websocket
 import threading
@@ -215,6 +216,7 @@ class Discbot:
                         'op': Discbot.OP_HEARTBEAT,
                         'd': self.sequence
                     }))
+                    Stats.out(self.log)
                 elif delta > interval: #Case if heartbeat should be sent but an ack was never gotten
                     self.resume_flag = 1
                     self.ws.close()

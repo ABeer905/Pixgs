@@ -1,5 +1,6 @@
 from discord_service.discbot import Discbot
 from cache_service.image_cache import ImgCache
+from stats import Stats
 import logging
 from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
@@ -15,7 +16,7 @@ TOKEN = os.getenv("TOKEN")
 SHARD_ID = os.getenv("SHARD_ID")
 SHARD_TOTAL = os.getenv("SHARD_TOTAL")
 
-handle = RotatingFileHandler('pixgs-s%s.log' % SHARD_ID, mode='a', maxBytes=25*1024*1024, encoding='utf-8')
+handle = RotatingFileHandler('pixgs-s%s.log' % SHARD_ID, mode='a', maxBytes=1024*1024*1024, encoding='utf-8')
 handle.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(filename)s %(lineno)d %(message)s'))
 handle.setLevel(logging.INFO)
 
@@ -305,8 +306,6 @@ class Canvas:
         message_id = tk_args[2]['custom_id']
         return channel_id, message_id
 
-canvases = 0
-
 #Set color select dropdown options
 Canvas.CONTROLLER_COMPONENT[1]['components'][0]['options'] = Canvas.colors_to_list(1)
 
@@ -379,9 +378,7 @@ def canvas(command_response):
         components=controller if optional_args['private'] else Canvas.EDIT_COMPONENT,
         hidden=optional_args['private']
     )
-    global canvases
-    canvases+=1
-    log.info('Creating canvas #%d' % canvases)
+    Stats.canvases += 1
 
 '''
 Callback function to enter 'edit mode', where a user can begin editing a canvas
@@ -400,6 +397,7 @@ def edit_mode(command_response):
       components=controller,
       hidden=True
     )
+    Stats.edit += 1
 
 '''
 Callback function for moving the drawing cursor
@@ -445,6 +443,7 @@ def move(command_response):
     image = image[:new_cur] + Canvas.ENUM_CURSOR[Canvas.color_from_char(image[new_cur])] + image[new_cur+1:]
     controller = Canvas.copy_controller(command_response)
     bot.reply_interaction(command_response['id'], command_response['token'], image, components=controller, edit=True)
+    Stats.move += 1
 
 '''
 Callback function where the user selects the drawing color
@@ -456,6 +455,7 @@ def choose_color(command_response):
     controller = Canvas.set_controller_color(controller, color)
 
     bot.reply_interaction(command_response['id'], command_response['token'], image, components=controller, edit=True)
+    Stats.color += 1
 
 '''
 Callback function for setting a pixel to the selected color
@@ -485,6 +485,7 @@ def draw(command_response):
     if not private:
         imgcache.put((channel_id, message_id), image_public)
         bot.edit_message(channel_id, message_id, image_public)
+    Stats.draw += 1
 
 '''
 Toggles the cursor to make it visible/invisible
@@ -502,6 +503,7 @@ def toggle_cursor(command_response):
     color = Canvas.color_from_char(image[cur])
     image = image[:cur] + (Canvas.ENUM_CURSOR[color] if show_c else Canvas.ENUM_COLORS[color]) + image[cur+1:]
     bot.reply_interaction(command_response['id'], command_response['token'], image, components=controller, edit=True)
+    Stats.cur += 1
 
 '''
 Callback method for /help. Returns the url for command refrence
@@ -513,6 +515,7 @@ def help(command_response):
         'For information on using Pixgs visit: https://pix-gs.github.io/commands.html',
         hidden=True
     )
+    Stats.help += 1
 
 bot.register_command(canvas_command, canvas, '--reg' in sys.argv)
 bot.register_command(help_command, help, '--reg' in sys.argv)
