@@ -1,5 +1,5 @@
 from stats import Stats
-from multiprocessing import Pool
+from multiprocessing.dummy import Pool
 import websocket
 import threading
 import requests
@@ -85,9 +85,9 @@ class Discbot:
                 on_open=self._on_open,
                 on_close=self._on_close,
                 on_message=self._on_msg,
-                on_error=self._on_err
+                on_error=self._on_err,
             )
-        self.ws.run_forever()
+        self.ws.run_forever(skip_utf8_validation=True)
 
     '''
     Registers a Discord command. Used to callback to command functions when recieved by the websocket.
