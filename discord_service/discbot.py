@@ -56,7 +56,7 @@ class Discbot:
         self.gateway_url = ''        #Url used to open the initial gateway. May be needed to reconnect if a resume is not possible.
         self.resume_gateway_url = '' #Url used to resume a disconnected gateway.
         self.resume_session_id = ''  #Session id used to resume a disconnected gateway.
-        self.resume_flag = -1         #Indicates wether a resume or identify should be sent on connection open.
+        self.resume_flag = 0         #Indicates wether a resume (1) or identify (0) should be sent on connection open.
         
         self.log = log
     
@@ -113,7 +113,7 @@ class Discbot:
         payload = None
 
         if self.resume_flag == 1:
-            self.resume_flag = -1
+            self.resume_flag = 0
             payload = {
                 'op': Discbot.OP_RESUME,
                 'd': {
@@ -123,7 +123,6 @@ class Discbot:
                 }
             }
         else:
-            self.resume_flag = -1
             payload = {
                 'op': Discbot.OP_IDENTIFY,
                 'd': {
@@ -148,12 +147,10 @@ class Discbot:
             close_status_code,
             close_msg
         ))
-        if self.resume_flag == -1 and not close_status_code:
+        if close_status_code == None:
             return
         else:
-            if self.resume_flag == -1:
-                self.resume_flag = close_status_code not in Discbot.UNRECOVERABLE_EXIT
-            self.clean_up(restart=True, resumable=self.resume_flag)
+            self.clean_up(restart=True, resumable= not (close_status_code in Discbot.UNRECOVERABLE_EXIT))
 
     def _on_err(self, ws, error):
         self.log.error('The following error was encountered with the websocket: {}'.format(str(error)))
@@ -177,10 +174,11 @@ class Discbot:
                     if callback in self.command_registry:
                         self.command_registry[callback](res['d'])
             case Discbot.OP_HEARTBEAT:
+                self.log.info('Immediate heartbeat required')
                 self.heartbeat_flag = 1
             case Discbot.OP_RECONNECT:
-                self.resume_flag = 1
                 ws.close()
+                self.clean_up(restart=True, resumable=True)
             case Discbot.OP_HELLO:
                 interval = res['d']['heartbeat_interval']
                 self.log.info('Starting heartbeat with interval: %dms', interval)
@@ -189,11 +187,9 @@ class Discbot:
                 self.ack = 1
                 self.log.info("Recieved Ack")
             case Discbot.OP_INVALID:
-                if res['d'] == True:
-                    self.resume_flag = 1
-                else:
-                    self.resume_flag = 0
+                self.log.info('Invalid state. Closing the websocket')
                 ws.close()
+                self.clean_up(restart=True, resumable=res['d'])
 
     '''
     Sends a periodic 'heartbeat' with the last recieved sequence number to keep the websocket alive.
@@ -218,8 +214,8 @@ class Discbot:
                     }))
                     Stats.out(self.log)
                 elif delta > interval: #Case if heartbeat should be sent but an ack was never gotten
-                    self.resume_flag = 1
                     self.ws.close()
+                    self.clean_up(restart=True, resumable=False)
                     return
                 time.sleep(.5) #Time precision is not super important so we can deschedule the thread
 
@@ -233,6 +229,7 @@ class Discbot:
         if restart:
             if resumable:
                 self.log.info('Attempting to resume websocket connection.')
+                self.resume_flag = 1
                 self.start(wss_url=self.resume_gateway_url)
             else:
                 self.log.info('Attempting to restart websocket connection.')
