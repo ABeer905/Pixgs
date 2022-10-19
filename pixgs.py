@@ -528,4 +528,8 @@ bot.register_command({'name': 'color_select'}, choose_color, False)
 bot.register_command({'name': 'draw'}, draw, False)
 bot.register_command({'name': 'cursor'}, toggle_cursor, False)
 
-bot.start()
+exitcode = 0
+while exitcode >= 0:
+    exitcode = bot.start(resume=exitcode)
+    print(exitcode)
+log.info("Bot terminated")
